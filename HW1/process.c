@@ -23,7 +23,8 @@ int count = 0;
 int main()
 {
     int pipec1c2[2];
-    int pipec2c1[2];
+    int pid_pipec1c2[2];
+    int pid_pipec2c1[2];
 
     int rlwrite, rlread;
 
@@ -41,11 +42,15 @@ int main()
     {
         perror("pipe c1 -> c2");
     }
-    if (pipe(pipec2c1) == -1)
+    if (pipe(pid_pipec2c1) == -1)
     {
-        perror("Pipe c2 -> c1");
+        perror("Adress Pipe c2 -> c1");
     }
-
+    
+    if (pipe(pid_pipec1c2) == -1)
+    {
+        perror("adress pipe c1 -> c2");
+    }
     parent_pid = fork();
     if (parent_pid > 0)
     {
@@ -53,7 +58,9 @@ int main()
         child2_pid = fork();
         if (child2_pid == 0)
         {
-            while (read(pipec2c1[0], &rlread, sizeof(rlread)) != sizeof(rlread))
+            // This is child process for child 2
+            int child2_address = getpid();
+            while (read(pid_pipec2c1[0], &rlread, sizeof(rlread)) != sizeof(rlread))
             {
                 if (write(STDOUT_FILENO, &rlread, sizeof(rlread)) != sizeof(rlread))
                 {
@@ -61,6 +68,8 @@ int main()
                     raise(SIGKILL);
                 }
             }
+
+            write(pid_pipec1c2[1], &child2_address, sizeof(child2_address)) != (sizeof(child2_address));
 
             while(continue_program(&bufcont))
             { 
@@ -92,6 +101,7 @@ int main()
                         perror("EXITING");
                         program_run = q;
                     }
+                    usleep(1000);
                 }
             }
             kill(SIGKILL, rlread);
@@ -112,20 +122,34 @@ int main()
     }
     else if (parent_pid == 0)
     {   
+        // This is child process for child 1
         rlwrite = getpid();
-        write(pipec2c1[1], &rlwrite, sizeof(rlwrite)) != (sizeof(rlwrite));
+        write(pid_pipec2c1[1], &rlwrite, sizeof(rlwrite)) != (sizeof(rlwrite));
+
+        int child2_address;
+        while (read(pid_pipec1c2[0], &child2_address, sizeof(child2_address)) != sizeof(child2_address))
+        {
+            if (write(STDOUT_FILENO, &child2_address, sizeof(child2_address)) != sizeof(child2_address))
+            {
+                perror("write");
+                raise(SIGKILL);
+            }
+        }
 
         while(1)
         {
             while (read(pipec1c2[0], &readbuf, sizeof(readbuf)) != sizeof(readbuf))
             {
+
                 if (write(STDOUT_FILENO, &readbuf, sizeof(readbuf)) != sizeof(readbuf))
                 {
                     perror("write");
                     raise(SIGKILL);
                 }
             }
-            printf("%i + %i = %i \n", readbuf[0], readbuf[1], readbuf[0] + readbuf[1]);
+            kill(SIGINT, child2_address);
+            printf("The sum is %i + %i = %i \n", readbuf[0], readbuf[1], readbuf[0] + readbuf[1]);
+            kill(SIGCONT, child2_address);
         }
     }
     else
